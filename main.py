@@ -159,7 +159,6 @@ Output (Provide only the improved translation, with no explanation):
 
     return prompt
 
-
 def refine_with_mistral(
     src_lang: str,
     tgt_lang: str,
@@ -171,22 +170,38 @@ def refine_with_mistral(
     if not (MISTRAL_API_KEY and MISTRAL_ENDPOINT and MISTRAL_DEPLOYMENT):
         return draft
 
-    client = OpenAI(base_url=MISTRAL_ENDPOINT, api_key=MISTRAL_API_KEY)
     prompt = build_mistral_prompt(src_lang, tgt_lang, src_text, draft, terms)
 
-    resp = client.chat.completions.create(
-        model=MISTRAL_DEPLOYMENT,
-        messages=[
+    url = MISTRAL_ENDPOINT.rstrip("/") + "/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+    }
+
+    payload = {
+        "model": MISTRAL_DEPLOYMENT,
+        "messages": [
             {"role": "system", "content": "You are a translation refinement engine."},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.0,
-        max_tokens=220,
-    )
+        "temperature": 0.0,
+        "max_tokens": 220,
+    }
 
-    out = (resp.choices[0].message.content or "").strip()
-    return out if out else draft
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        if r.status_code != 200:
+            # fallback to draft on error
+            return draft
 
+        data = r.json()
+        out = data["choices"][0]["message"]["content"].strip()
+        return out if out else draft
+
+    except Exception:
+        return draft
+        
 
 # ================================
 # FastAPI app
